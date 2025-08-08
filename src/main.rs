@@ -1,9 +1,15 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use migration::{Migrator, MigratorTrait};
+use routes::create_routes;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod handlers;
+mod models;
+mod routes;
+mod services;
 
 #[tokio::main]
 async fn main() {
@@ -21,16 +27,19 @@ async fn main() {
         .parse()
         .unwrap();
 
-    let connection = sea_orm::Database::connect(&database_url)
+    let db = sea_orm::Database::connect(&database_url)
         .await
         .expect("Failed to connect to database.");
-    Migrator::up(&connection, None)
+    Migrator::up(&db, None)
         .await
         .expect("Failed to run migrations.");
 
-    let app = Router::new()
-        .route("/health", get(health_check))
-        .with_state(connection);
+    let db = Arc::new(db);
+    // let app = Router::new()
+    //     .route("/health", get(health_check))
+    //     .with_state(db);
+
+    let app = create_routes(db);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
@@ -41,6 +50,6 @@ async fn main() {
         .unwrap();
 }
 
-async fn health_check() -> &'static str {
+pub async fn health_check() -> &'static str {
     "OK"
 }
