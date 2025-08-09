@@ -2,7 +2,7 @@
 
 use sea_orm::{ActiveValue::Set, entity::prelude::*};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, serde::Serialize)]
 #[sea_orm(table_name = "user")]
 pub struct Model {
     #[sea_orm(primary_key)]

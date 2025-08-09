@@ -75,3 +75,18 @@ pub async fn verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<us
 
     Ok(updated_user)
 }
+
+pub async fn get_user(db: Arc<DatabaseConnection>, user_id: i32) -> Result<user::Model> {
+    let existing_user = user::Entity::find()
+        .filter(user::Column::Id.eq(user_id))
+        .one(&*db)
+        .await
+        .map_err(|e| anyhow!("Database query error: {}", e))?;
+
+    if existing_user.is_none() {
+        return Err(anyhow!("Has not user"));
+    }
+
+    let user = existing_user.unwrap();
+    Ok(user)
+}

@@ -1,12 +1,12 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use migration::{Migrator, MigratorTrait};
 use routes::create_routes;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod handlers;
+mod middlewares;
 mod models;
 mod routes;
 mod services;

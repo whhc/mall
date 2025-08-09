@@ -16,3 +16,15 @@ pub struct RegisterResponse {
     pub email: String,
     pub email_verified: bool,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct LoginUserDto {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug)]
+pub struct LoginResponse {
+    pub user_id: String,
+    pub token: String,
+}
