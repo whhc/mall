@@ -15,6 +15,7 @@ mod services;
 async fn main() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new("mall=debug"))
+        // .with(tracing_subscriber::EnvFilter::new("trace"))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -35,9 +36,6 @@ async fn main() {
         .expect("Failed to run migrations.");
 
     let db = Arc::new(db);
-    // let app = Router::new()
-    //     .route("/health", get(health_check))
-    //     .with_state(db);
 
     let app = create_routes(db);
 

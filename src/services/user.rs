@@ -8,6 +8,8 @@ use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, entity::*};
 use entity::user;
 use uuid::Uuid;
 
+use crate::middlewares::auth::AuthenticatedUser;
+
 pub async fn register(
     db: Arc<DatabaseConnection>,
     email: String,
@@ -55,7 +57,7 @@ pub async fn register(
     Ok(user)
 }
 
-pub async fn verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<user::Model> {
+pub async fn _verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<user::Model> {
     let select_user = user::Entity::find()
         .filter(user::Column::EmailVerificationToken.eq(Some(token.to_string())))
         .one(&*db)
@@ -76,7 +78,13 @@ pub async fn verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<us
     Ok(updated_user)
 }
 
-pub async fn get_user(db: Arc<DatabaseConnection>, user_id: i32) -> Result<user::Model> {
+pub async fn get_user(
+    db: Arc<DatabaseConnection>,
+    user_id: i32,
+    auth_user: AuthenticatedUser,
+) -> Result<user::Model> {
+    tracing::info!("Auth_user: {auth_user:?}");
+
     let existing_user = user::Entity::find()
         .filter(user::Column::Id.eq(user_id))
         .one(&*db)

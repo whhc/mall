@@ -8,7 +8,7 @@ use axum::{
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 
-use crate::services;
+use crate::{middlewares::auth::AuthenticatedUser, services};
 
 #[derive(Serialize)]
 struct ApiResponse {
@@ -19,8 +19,10 @@ struct ApiResponse {
 pub async fn get_profile(
     State(db): State<Arc<DatabaseConnection>>,
     Path(user_id): Path<i32>,
+    auth_user: AuthenticatedUser,
 ) -> impl IntoResponse {
-    match services::user::get_user(db, user_id).await {
+    tracing::info!("Auth user is: {}", auth_user.0);
+    match services::user::get_user(db, user_id, auth_user).await {
         Ok(user) => {
             tracing::info!("Get user info by user_id {user_id} success");
             (

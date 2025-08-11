@@ -5,7 +5,6 @@ use axum::{Router, routing::get};
 use sea_orm::DatabaseConnection;
 
 use crate::handlers::{auth, user};
-use crate::middlewares::auth::AuthenticatedUser;
 
 pub fn routes(db: Arc<DatabaseConnection>) -> Router {
     // let auth_route = Router::new().with_state(db.clone());

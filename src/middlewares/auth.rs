@@ -1,19 +1,21 @@
+use std::sync::Arc;
+
 use axum::{
-    extract::FromRequestParts,
+    extract::{FromRef, FromRequestParts},
     http::{StatusCode, request::Parts},
 };
 use jsonwebtoken::{DecodingKey, Validation, decode};
-use sea_orm::sqlx::PgPool;
+use sea_orm::DatabaseConnection;
 
 #[derive(Debug)]
-pub struct AuthenticatedUser(String);
+pub struct AuthenticatedUser(pub String);
 
 impl AuthenticatedUser {}
 
 impl<S> FromRequestParts<S> for AuthenticatedUser
 where
-    S: Send + Sync,
-    PgPool: From<S>,
+    Arc<DatabaseConnection>: FromRef<S>,
+    S: Send + Sync + std::fmt::Debug,
 {
     type Rejection = (StatusCode, String);
 
@@ -49,7 +51,7 @@ where
                 )
             })?;
 
-        let token = auth_header.strip_prefix("Bearer").ok_or((
+        let token = auth_header.strip_prefix("Bearer ").ok_or((
             StatusCode::UNAUTHORIZED,
             "Authorization header format must be 'Bearer <token>'".to_string(),
         ))?;
@@ -61,10 +63,11 @@ where
             )
         })?;
 
+        let validation = Validation::new(jsonwebtoken::Algorithm::HS256);
         let decoded = decode::<Claims>(
             token,
             &DecodingKey::from_secret(secret.as_bytes()),
-            &Validation::default(),
+            &validation,
         )
         .map_err(|_| {
             (
@@ -74,17 +77,11 @@ where
         })?;
 
         let decoded_cc = decoded.claims.sub;
-        //     .parse::<String>().map_err(|_| {
-        //     (
-        //         StatusCode::NON_AUTHORITATIVE_INFORMATION,
-        //         "Cc is invalid".to_string(),
-        //     )
-        // })?;
 
         if &decoded_cc != cc {
             return Err((
                 StatusCode::UNAUTHORIZED,
-                "Invalid Authorization info".to_string(),
+                "Invalid Authorization info ".to_string(),
             ));
         }
 

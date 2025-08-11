@@ -10,7 +10,7 @@ pub struct RegisterUserDto {
 
 /// 用户注册响应DTO
 #[derive(Debug)]
-pub struct RegisterResponse {
+pub struct _RegisterResponse {
     pub message: String,
     pub user_id: i32,
     pub email: String,
