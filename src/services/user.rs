@@ -6,9 +6,10 @@ use chrono::{DateTime, Utc};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, entity::*};
 
 use entity::user;
-use uuid::Uuid;
 
 use crate::middlewares::auth::AuthenticatedUser;
+
+use super::email::{EmailConfig, generate_verification_code, send_verification_email};
 
 pub async fn register(
     db: Arc<DatabaseConnection>,
@@ -16,7 +17,6 @@ pub async fn register(
     password: String,
     name: String,
 ) -> Result<user::Model> {
-    tracing::info!("Register start");
     let existing_user = user::Entity::find()
         .filter(user::Column::Email.eq(&email))
         .one(&*db)
@@ -30,30 +30,33 @@ pub async fn register(
     let password_hash =
         hash(&password, DEFAULT_COST).map_err(|e| anyhow!("Password hash error: {}", e))?;
 
-    let email_verification_token = Uuid::new_v4().to_string();
+    let email_verification_token = generate_verification_code();
     let now: DateTime<Utc> = Utc::now();
-
-    println!("Email verification sent at: {}", now);
-    tracing::info!("Email verification sent at: {}", now);
 
     let new_user = user::ActiveModel {
         email: Set(email),
         password: Set(password_hash),
         name: Set(name),
-        email_verification_token: Set(Some(email_verification_token)),
+        email_verification_token: Set(Some(email_verification_token.clone())),
         email_verification_sent_at: Set(Some(now)),
         ..Default::default()
     };
+
+    let email_config = EmailConfig::from_env()?;
+    // 发送验证码
+    let _ = send_verification_email(
+        &email_config,
+        "Gao Guixi <gao.guixi@qq.com>".to_string(),
+        &email_verification_token,
+        &super::email::CodeType::REGISTER,
+    )
+    .await?;
 
     let user = new_user
         .insert(&*db)
         .await
         .map_err(|e| anyhow!("Insert user to database error: {}", e))?;
 
-    // 发送验证码
-    // send_verification_email(&user).await?;
-
-    tracing::info!("Register success");
     Ok(user)
 }
 
@@ -81,10 +84,8 @@ pub async fn _verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<u
 pub async fn get_user(
     db: Arc<DatabaseConnection>,
     user_id: i32,
-    auth_user: AuthenticatedUser,
+    _auth_user: AuthenticatedUser,
 ) -> Result<user::Model> {
-    tracing::info!("Auth_user: {auth_user:?}");
-
     let existing_user = user::Entity::find()
         .filter(user::Column::Id.eq(user_id))
         .one(&*db)

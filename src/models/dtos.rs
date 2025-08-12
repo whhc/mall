@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// 用户注册请求DTO
 #[derive(Debug, Deserialize)]
@@ -23,7 +23,7 @@ pub struct LoginUserDto {
     pub password: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub user_id: String,
     pub token: String,

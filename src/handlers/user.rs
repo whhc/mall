@@ -21,27 +21,20 @@ pub async fn get_profile(
     Path(user_id): Path<i32>,
     auth_user: AuthenticatedUser,
 ) -> impl IntoResponse {
-    tracing::info!("Auth user is: {}", auth_user.0);
     match services::user::get_user(db, user_id, auth_user).await {
-        Ok(user) => {
-            tracing::info!("Get user info by user_id {user_id} success");
-            (
-                StatusCode::OK,
-                axum::Json(ApiResponse {
-                    message: "Success".to_string(),
-                    user: Some(user),
-                }),
-            )
-        }
-        Err(e) => {
-            tracing::error!("Get user info by user_id {user_id} error: {e}");
-            (
-                StatusCode::BAD_REQUEST,
-                axum::Json(ApiResponse {
-                    message: "Get user info error".to_string(),
-                    user: None,
-                }),
-            )
-        }
+        Ok(user) => (
+            StatusCode::OK,
+            axum::Json(ApiResponse {
+                message: "Success".to_string(),
+                user: Some(user),
+            }),
+        ),
+        Err(_) => (
+            StatusCode::BAD_REQUEST,
+            axum::Json(ApiResponse {
+                message: "Get user info error".to_string(),
+                user: None,
+            }),
+        ),
     }
 }

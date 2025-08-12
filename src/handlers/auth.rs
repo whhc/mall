@@ -53,6 +53,14 @@ pub async fn register(
     }
 }
 
+#[derive(Debug, Serialize)]
+struct LoginResponse {
+    code: i32,
+    cc: Option<String>,
+    message: String,
+    token: Option<String>,
+}
+
 pub async fn login(
     State(db): State<Arc<DatabaseConnection>>,
     Json(dto): Json<LoginUserDto>,
@@ -60,9 +68,11 @@ pub async fn login(
     if dto.email.is_empty() || dto.password.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            axum::Json(ApiResponse {
+            axum::Json(LoginResponse {
+                code: 1,
                 message: "Email or password should not be empty".to_string(),
                 cc: None,
+                token: None,
             }),
         );
     }
@@ -72,9 +82,11 @@ pub async fn login(
             tracing::info!("Login succecc with token: {}", info.token);
             (
                 StatusCode::OK,
-                axum::Json(ApiResponse {
-                    message: info.token,
+                axum::Json(LoginResponse {
+                    code: 0,
+                    message: "success".to_string(),
                     cc: Some(info.user_id),
+                    token: Some(info.token),
                 }),
             )
         }
@@ -82,9 +94,11 @@ pub async fn login(
             tracing::error!("Login error: {}", e);
             (
                 StatusCode::BAD_REQUEST,
-                axum::Json(ApiResponse {
+                axum::Json(LoginResponse {
+                    code: 1,
                     message: format!("Login Error: {}", e),
                     cc: None,
+                    token: None,
                 }),
             )
         }
