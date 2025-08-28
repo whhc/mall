@@ -4,13 +4,39 @@ use axum::{
     extract::{FromRef, FromRequestParts},
     http::{StatusCode, request::Parts},
 };
+use entity::user::{Entity as User, UserRole};
 use jsonwebtoken::{DecodingKey, Validation, decode};
-use sea_orm::DatabaseConnection;
+use sea_orm::ColumnTrait;
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
-pub struct AuthenticatedUser(pub String);
+#[derive(Debug, Clone)]
+pub struct AuthenticatedUser {
+    pub user_id: String,
+    pub role: UserRole,
+}
 
-impl AuthenticatedUser {}
+impl AuthenticatedUser {
+    /// 检查用户是否为管理员
+    pub fn is_admin(&self) -> bool {
+        matches!(self.role, UserRole::Admin)
+    }
+
+    /// 检查用户是否可以访问下架产品
+    pub fn can_access_inactive_products(&self) -> bool {
+        self.is_admin()
+    }
+
+    /// 检查用户是否可以修改产品
+    pub fn can_modify_products(&self) -> bool {
+        self.is_admin()
+    }
+
+    /// 检查用户是否可以管理分类和地区
+    pub fn can_manage_categories_regions(&self) -> bool {
+        self.is_admin()
+    }
+}
 
 impl<S> FromRequestParts<S> for AuthenticatedUser
 where
@@ -20,7 +46,8 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let _ = state;
+        let db = Arc::<DatabaseConnection>::from_ref(state);
+
         let auth_header = parts
             .headers
             .get("Authorization")
@@ -76,7 +103,7 @@ where
             )
         })?;
 
-        let decoded_cc = decoded.claims.sub;
+        let decoded_cc = decoded.claims.sub.clone();
 
         if &decoded_cc != cc {
             return Err((
@@ -85,12 +112,57 @@ where
             ));
         }
 
-        Ok(AuthenticatedUser(cc.to_string()))
+        let user = User::find()
+            .filter(
+                entity::user::Column::Id.eq(decoded.claims.sub.parse::<u64>().map_err(|_| {
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        "Invalid user ID in token".to_string(),
+                    )
+                })?),
+            )
+            .one(db.as_ref())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Middleware auth database error when get user {e}"),
+                )
+            })?
+            .ok_or((StatusCode::UNAUTHORIZED, "User not found".to_string()))?;
+
+        let role = user.role;
+
+        tracing::info!("User {cc} login with role {role:?}");
+
+        Ok(AuthenticatedUser {
+            user_id: cc.to_string(),
+            role,
+        })
     }
 }
 
-#[derive(serde::Deserialize)]
+/// 可选的认证用户 - 用于允许匿名访问但需要区分用户状态的接口
+pub struct OptionalAuthenticatedUser(pub Option<AuthenticatedUser>);
+
+impl<S> FromRequestParts<S> for OptionalAuthenticatedUser
+where
+    Arc<DatabaseConnection>: FromRef<S>,
+    S: Send + Sync + std::fmt::Debug,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // 尝试获取认证用户，如果失败则返回None
+        match AuthenticatedUser::from_request_parts(parts, state).await {
+            Ok(user) => Ok(OptionalAuthenticatedUser(Some(user))),
+            Err(_) => Ok(OptionalAuthenticatedUser(None)),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 struct Claims {
     sub: String,
-    // exp: usize,
+    exp: Option<usize>,
 }

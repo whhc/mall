@@ -1,25 +1,23 @@
-use std::sync::Arc;
-
 use anyhow::{Result, anyhow};
 use bcrypt::{DEFAULT_COST, hash};
 use chrono::{DateTime, Utc};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, entity::*};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, entity::*};
 
 use entity::user;
 
-use crate::middlewares::auth::AuthenticatedUser;
+use crate::{middlewares::auth::AuthenticatedUser, models::dtos::UpdateUserRequest};
 
 use super::email::{EmailConfig, generate_verification_code, send_verification_email};
 
 pub async fn register(
-    db: Arc<DatabaseConnection>,
+    db: &DatabaseConnection,
     email: String,
     password: String,
     name: String,
 ) -> Result<user::Model> {
     let existing_user = user::Entity::find()
         .filter(user::Column::Email.eq(&email))
-        .one(&*db)
+        .one(db)
         .await
         .map_err(|e| anyhow!("Database query error: {}", e))?;
 
@@ -42,7 +40,8 @@ pub async fn register(
         ..Default::default()
     };
 
-    let email_config = EmailConfig::from_env()?;
+    let email_config =
+        EmailConfig::from_env().map_err(|e| anyhow!("Get email config error: {:?}", e))?;
     // 发送验证码
     let _ = send_verification_email(
         &email_config,
@@ -53,17 +52,17 @@ pub async fn register(
     .await?;
 
     let user = new_user
-        .insert(&*db)
+        .insert(db)
         .await
         .map_err(|e| anyhow!("Insert user to database error: {}", e))?;
 
     Ok(user)
 }
 
-pub async fn _verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<user::Model> {
+pub async fn _verify_email(db: &DatabaseConnection, token: &str) -> Result<user::Model> {
     let select_user = user::Entity::find()
         .filter(user::Column::EmailVerificationToken.eq(Some(token.to_string())))
-        .one(&*db)
+        .one(db)
         .await
         .map_err(|e| anyhow!("Database query error: {}", e))?
         .ok_or_else(|| anyhow!("Invalid email token"))?;
@@ -74,7 +73,7 @@ pub async fn _verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<u
     user_active_model.email_verification_sent_at = Set(None);
 
     let updated_user = user_active_model
-        .update(&*db)
+        .update(db)
         .await
         .map_err(|e| anyhow!("User updated error: {}", e))?;
 
@@ -82,15 +81,16 @@ pub async fn _verify_email(db: Arc<DatabaseConnection>, token: &str) -> Result<u
 }
 
 pub async fn get_user(
-    db: Arc<DatabaseConnection>,
+    db: &DatabaseConnection,
     user_id: i32,
     _auth_user: AuthenticatedUser,
-) -> Result<user::Model> {
+) -> Result<user::PartialUser> {
     let existing_user = user::Entity::find()
         .filter(user::Column::Id.eq(user_id))
-        .one(&*db)
+        .into_partial_model::<user::PartialUser>()
+        .one(db)
         .await
-        .map_err(|e| anyhow!("Database query error: {}", e))?;
+        .map_err(|e| anyhow!("Get user database error: {}", e))?;
 
     if existing_user.is_none() {
         return Err(anyhow!("Has not user"));
@@ -98,4 +98,31 @@ pub async fn get_user(
 
     let user = existing_user.unwrap();
     Ok(user)
+}
+
+pub async fn update_user(
+    db: &DatabaseConnection,
+    user_id: i32,
+    update_user: UpdateUserRequest,
+) -> Result<user::PartialUser> {
+    let user = user::Entity::find()
+        .filter(user::Column::Id.eq(user_id))
+        .one(db)
+        .await
+        .map_err(|e| anyhow!("Update user error: {}", e))?;
+
+    let user = user.ok_or_else(|| anyhow!("User not found"))?;
+
+    tracing::info!("Updating user: {:?}", update_user);
+
+    let mut user: user::ActiveModel = user.into();
+
+    user.name = Set(update_user.name.clone());
+
+    let updated_user = user
+        .update(db)
+        .await
+        .map_err(|e| anyhow!("Update user error: {}", e))?;
+
+    Ok(updated_user.into())
 }

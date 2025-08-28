@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::{Result, anyhow};
 use bcrypt::verify;
 use chrono::{Duration, Utc};
@@ -9,14 +7,10 @@ use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, entity::*};
 
 use crate::models::dtos::LoginResponse;
 
-pub async fn login(
-    db: Arc<DatabaseConnection>,
-    email: &str,
-    password: &str,
-) -> Result<LoginResponse> {
+pub async fn login(db: &DatabaseConnection, email: &str, password: &str) -> Result<LoginResponse> {
     let existing_user = user::Entity::find()
         .filter(user::Column::Email.eq(email))
-        .one(&*db)
+        .one(db)
         .await
         .map_err(|e| anyhow!("Email is not exist: {}", e))?;
 

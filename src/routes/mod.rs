@@ -1,10 +1,12 @@
-use std::sync::Arc;
-
 use axum::Router;
-use sea_orm::DatabaseConnection;
 
+use crate::models::app::AppState;
+
+pub mod product;
 mod user;
 
-pub fn create_routes(db: Arc<DatabaseConnection>) -> Router {
-    Router::new().nest("/api/v1/user", user::routes(db))
+pub fn create_routes() -> Router<AppState> {
+    Router::new()
+        .nest("/api/v1/user", user::routes())
+        .nest("/api/v1", product::create_product_routes())
 }

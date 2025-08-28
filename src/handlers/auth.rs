@@ -1,11 +1,11 @@
-use std::sync::Arc;
-
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use sea_orm::DatabaseConnection;
 use serde::Serialize;
 
 use crate::{
-    models::dtos::{LoginUserDto, RegisterUserDto},
+    models::{
+        app::AppState,
+        dtos::{LoginUserDto, RegisterUserDto},
+    },
     services,
 };
 
@@ -16,7 +16,7 @@ struct ApiResponse {
 }
 
 pub async fn register(
-    State(db): State<Arc<DatabaseConnection>>,
+    State(state): State<AppState>,
     Json(dto): Json<RegisterUserDto>,
 ) -> impl IntoResponse {
     if dto.email.is_empty() || dto.password.is_empty() || dto.password.is_empty() {
@@ -29,7 +29,7 @@ pub async fn register(
         );
     }
 
-    match services::user::register(db, dto.email, dto.password, dto.name).await {
+    match services::user::register(&state.db, dto.email, dto.password, dto.name).await {
         Ok(user) => {
             tracing::info!("Register success: {:#?}", user);
             (
@@ -62,7 +62,7 @@ struct LoginResponse {
 }
 
 pub async fn login(
-    State(db): State<Arc<DatabaseConnection>>,
+    State(state): State<AppState>,
     Json(dto): Json<LoginUserDto>,
 ) -> impl IntoResponse {
     if dto.email.is_empty() || dto.password.is_empty() {
@@ -77,9 +77,9 @@ pub async fn login(
         );
     }
 
-    match services::auth::login(db, &dto.email, &dto.password).await {
+    match services::auth::login(&state.db, &dto.email, &dto.password).await {
         Ok(info) => {
-            tracing::info!("Login succecc with token: {}", info.token);
+            tracing::info!("Login success with token: {}", info.token);
             (
                 StatusCode::OK,
                 axum::Json(LoginResponse {

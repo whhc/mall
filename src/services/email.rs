@@ -30,7 +30,7 @@ pub struct EmailConfig {
 impl EmailConfig {
     pub fn from_env() -> Result<Self> {
         let smtp_server =
-            std::env::var("SMTP_SERVER").map_err(|_| anyhow!("SMTP server is not configured"))?;
+            std::env::var("SMTP_HOST").map_err(|_| anyhow!("SMTP server is not configured"))?;
         let smtp_port = std::env::var("SMTP_PORT")
             .map_err(|_| anyhow!("SMTP port is not configured"))?
             .parse::<u16>()?;
@@ -39,7 +39,7 @@ impl EmailConfig {
         let smtp_password = std::env::var("SMTP_PASSWORD")
             .map_err(|_| anyhow!("SMTP password is not configured"))?;
         let from_email =
-            std::env::var("FROM_EMAIL").map_err(|_| anyhow!("From email is not configured"))?;
+            std::env::var("SMTP_FROM").map_err(|_| anyhow!("From email is not configured"))?;
 
         Ok(Self {
             smtp_server,
