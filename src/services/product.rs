@@ -1,4 +1,4 @@
-use ::entity::{product, product_category, product_region};
+use ::entity::{category, product, product_category, product_region, region};
 use anyhow::{Ok, Result, anyhow};
 use chrono::Utc;
 use sea_orm::*;
@@ -72,12 +72,9 @@ pub async fn list_products(
             product_image: product.product_image,
             product_price: product.product_price.to_string().parse().unwrap_or(0.0),
             product_stock: product.product_stock,
-            status: match product.status {
-                ::entity::product::ProductStatus::Active => ProductStatus::Active,
-                ::entity::product::ProductStatus::Inactive => ProductStatus::Inactive,
-            },
-            categories: vec![], // TODO: 需要单独查询关联的分类
-            regions: vec![],    // TODO: 需要单独查询关联的地区
+            status: product.status,
+            categories: vec![], // 在列表视图中暂时为空，避免N+1查询问题
+            regions: vec![],    // 在列表视图中暂时为空，避免N+1查询问题
             created_at: product.created_at.to_string(),
             updated_at: product.updated_at.to_string(),
         })
@@ -100,7 +97,51 @@ pub async fn get_product(
     let product = product::Entity::find_by_id(product_id)
         .one(db)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("Product not found"))?;
+        .ok_or_else(|| anyhow::anyhow!("Get product Error: product not found"))?;
+
+    let categroy_ids = product_category::Entity::find()
+        .filter(product_category::Column::ProductId.eq(product_id))
+        .all(db)
+        .await
+        .map_err(|e| anyhow!("Product {product_id} get category ids error: {e}"))?
+        .into_iter()
+        .map(|pc| pc.category_id)
+        .collect::<Vec<_>>();
+
+    let categories = category::Entity::find()
+        .filter(category::Column::CategoryId.is_in(categroy_ids))
+        .all(db)
+        .await
+        .map_err(|e| anyhow!("Product {product_id} get categories error: {e}"))?
+        .into_iter()
+        .map(|category| CategoryInfo {
+            category_id: category.category_id,
+            category_name: category.category_name,
+            parent_category_id: category.parent_category_id,
+        })
+        .collect();
+
+    // 查询关联的地区
+    let region_ids = product_region::Entity::find()
+        .filter(product_region::Column::ProductId.eq(product_id))
+        .all(db)
+        .await
+        .map_err(|e| anyhow!("Product {product_id} get region ids error: {e}"))?
+        .into_iter()
+        .map(|pr| pr.region_id)
+        .collect::<Vec<_>>();
+
+    let regions = region::Entity::find()
+        .filter(region::Column::RegionId.is_in(region_ids))
+        .all(db)
+        .await
+        .map_err(|e| anyhow!("Product {product_id} get regions error: {e}"))?
+        .into_iter()
+        .map(|region| RegionInfo {
+            region_id: region.region_id,
+            region_name: region.region_name,
+        })
+        .collect();
 
     // 转换为响应格式
     let product_response = ProductResponse {
@@ -110,12 +151,9 @@ pub async fn get_product(
         product_image: product.product_image,
         product_price: product.product_price.to_string().parse().unwrap_or(0.0),
         product_stock: product.product_stock,
-        status: match product.status {
-            ::entity::product::ProductStatus::Active => ProductStatus::Active,
-            ::entity::product::ProductStatus::Inactive => ProductStatus::Inactive,
-        },
-        categories: vec![], // TODO: 需要单独查询关联的分类
-        regions: vec![],    // TODO: 需要单独查询关联的地区
+        status: product.status,
+        categories,
+        regions,
         created_at: product.created_at.to_string(),
         updated_at: product.updated_at.to_string(),
     };
@@ -123,11 +161,7 @@ pub async fn get_product(
     Ok(product_response)
 }
 
-pub async fn create_product(
-    db: &DatabaseConnection,
-    request: CreateProductRequest,
-    _user: AuthenticatedUser,
-) -> Result<i64> {
+pub async fn create_product(db: &DatabaseConnection, request: CreateProductRequest) -> Result<i64> {
     let exsiting_product = product::Entity::find()
         .filter(product::Column::ProductName.eq(&request.product_name))
         .one(db)
@@ -145,6 +179,7 @@ pub async fn create_product(
         product_price: Set(request.product_price),
         product_image: Set(request.product_image),
         created_at: Set(Utc::now()),
+        status: Set(request.status),
         ..Default::default()
     };
 
@@ -153,48 +188,225 @@ pub async fn create_product(
         .await
         .map_err(|e| anyhow!("Insert product failed: {:?}", e))?;
 
+    let product_id = product.product_id;
+    let categories = request.category_ids;
+    for category_id in categories {
+        let product_category = product_category::ActiveModel {
+            product_id: Set(product_id),
+            category_id: Set(category_id),
+            ..Default::default()
+        };
+
+        product_category
+            .insert(db)
+            .await
+            .map_err(|e| anyhow!("Insert product_category failed: {:?}", e))?;
+    }
+    let regions = request.region_ids;
+    for region_id in regions {
+        let product_region = product_region::ActiveModel {
+            product_id: Set(product_id),
+            region_id: Set(region_id),
+            ..Default::default()
+        };
+
+        product_region
+            .insert(db)
+            .await
+            .map_err(|e| anyhow!("Insert product_region failed: {:?}", e))?;
+    }
+
     Ok(product.product_id)
 }
 
 pub async fn update_product(
-    _db: &DatabaseConnection,
-    _product_id: i64,
-    _request: UpdateProductRequest,
+    db: &DatabaseConnection,
+    product_id: i64,
+    request: UpdateProductRequest,
 ) -> Result<()> {
-    Err(anyhow::anyhow!(
-        "Product service not available until migration complete"
-    ))
+    let product = product::Entity::find_by_id(product_id)
+        .one(db)
+        .await
+        .map_err(|e| anyhow!("Get product database error: {}", e))?
+        .ok_or_else(|| anyhow!("Product not found"))?;
+
+    let mut product = product.into_active_model();
+
+    if let Some(product_name) = request.product_name {
+        product.product_name = Set(product_name);
+    }
+    if let Some(product_description) = request.product_description {
+        product.product_description = Set(Some(product_description));
+    }
+
+    if let Some(product_image) = request.product_image {
+        product.product_image = Set(Some(product_image));
+    }
+
+    if let Some(product_price) = request.product_price {
+        product.product_price = Set(product_price);
+    }
+    if let Some(product_stock) = request.product_stock {
+        product.product_stock = Set(product_stock);
+    }
+    if let Some(status) = request.status {
+        product.status = Set(status);
+    }
+
+    product.updated_at = Set(Utc::now());
+
+    if let Some(category_ids) = request.category_ids {
+        product_category::Entity::delete_many()
+            .filter(product_category::Column::ProductId.eq(product_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!("Delete product_category database error: {}", e))?;
+        for category_id in category_ids {
+            let product_category = product_category::ActiveModel {
+                product_id: Set(product_id),
+                category_id: Set(category_id),
+                ..Default::default()
+            };
+
+            product_category
+                .insert(db)
+                .await
+                .map_err(|e| anyhow!("Insert product_category failed: {:?}", e))?;
+        }
+    }
+
+    if let Some(region_ids) = request.region_ids {
+        product_region::Entity::delete_many()
+            .filter(product_region::Column::ProductId.eq(product_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!("Delete product_region database error: {}", e))?;
+        for region_id in region_ids {
+            let product_region = product_region::ActiveModel {
+                product_id: Set(product_id),
+                region_id: Set(region_id),
+                ..Default::default()
+            };
+
+            product_region
+                .insert(db)
+                .await
+                .map_err(|e| anyhow!("Insert product_region failed: {:?}", e))?;
+        }
+    }
+
+    product
+        .update(db)
+        .await
+        .map_err(|e| anyhow!("Update product database error: {}", e))?;
+
+    Ok(())
 }
 
-pub async fn delete_product(_db: &DatabaseConnection, _product_id: i64) -> Result<()> {
-    Err(anyhow::anyhow!(
-        "Product service not available until migration complete"
-    ))
+pub async fn delete_product(db: &DatabaseConnection, product_id: i64) -> Result<()> {
+    product::Entity::delete_by_id(product_id)
+        .exec(db)
+        .await
+        .map_err(|e| anyhow!("Delete product database error: {}", e))?;
+    product_category::Entity::delete_many()
+        .filter(product_category::Column::ProductId.eq(product_id))
+        .exec(db)
+        .await
+        .map_err(|e| anyhow!("Delete product_category database error: {}", e))?;
+    product_region::Entity::delete_many()
+        .filter(product_region::Column::ProductId.eq(product_id))
+        .exec(db)
+        .await
+        .map_err(|e| anyhow!("Delete product_region database error: {}", e))?;
+    Ok(())
 }
 
-pub async fn list_categories(_db: &DatabaseConnection) -> Result<CategoryListResponse> {
-    Err(anyhow::anyhow!(
-        "Product service not available until migration complete"
-    ))
+pub async fn list_categories(db: &DatabaseConnection) -> Result<CategoryListResponse> {
+    let categories = category::Entity::find()
+        .all(db)
+        .await
+        .map_err(|e| anyhow!("Get cateories database error: {}", e))?;
+
+    let category_responses: Vec<CategoryInfo> = categories
+        .into_iter()
+        .map(|category| CategoryInfo {
+            category_id: category.category_id,
+            category_name: category.category_name,
+            parent_category_id: category.parent_category_id,
+        })
+        .collect();
+
+    Ok(CategoryListResponse {
+        categories: category_responses,
+    })
 }
 
 pub async fn create_category(
-    _db: &DatabaseConnection,
-    _request: CreateCategoryRequest,
+    db: &DatabaseConnection,
+    request: CreateCategoryRequest,
 ) -> Result<i64> {
-    Err(anyhow::anyhow!(
-        "Product service not available until migration complete"
-    ))
+    let exsiting_category = category::Entity::find()
+        .filter(category::Column::CategoryName.eq(&request.category_name))
+        .one(db)
+        .await
+        .map_err(|e| anyhow!("Database error: {}", e))?;
+
+    if exsiting_category.is_some() {
+        return Err(anyhow!("Category already exists"));
+    }
+
+    let category = category::ActiveModel {
+        category_name: Set(request.category_name),
+        ..Default::default()
+    };
+
+    let category = category
+        .insert(db)
+        .await
+        .map_err(|e| anyhow!("Insert category failed: {:?}", e))?;
+
+    Ok(category.category_id)
 }
 
-pub async fn list_regions(_db: &DatabaseConnection) -> Result<RegionListResponse> {
-    Err(anyhow::anyhow!(
-        "Product service not available until migration complete"
-    ))
+pub async fn list_regions(db: &DatabaseConnection) -> Result<RegionListResponse> {
+    let regions = region::Entity::find()
+        .all(db)
+        .await
+        .map_err(|e| anyhow!("Get regions database error: {}", e))?;
+
+    let region_responses: Vec<RegionInfo> = regions
+        .into_iter()
+        .map(|region| RegionInfo {
+            region_id: region.region_id,
+            region_name: region.region_name,
+        })
+        .collect();
+
+    Ok(RegionListResponse {
+        regions: region_responses,
+    })
 }
 
-pub async fn create_region(_db: &DatabaseConnection, _request: CreateRegionRequest) -> Result<i64> {
-    Err(anyhow::anyhow!(
-        "Product service not available until migration complete"
-    ))
+pub async fn create_region(db: &DatabaseConnection, request: CreateRegionRequest) -> Result<i64> {
+    let existing_region = region::Entity::find()
+        .filter(region::Column::RegionName.eq(&request.region_name))
+        .one(db)
+        .await
+        .map_err(|e| anyhow!("Database error: {}", e))?;
+
+    if existing_region.is_some() {
+        return Err(anyhow!("Region already exists"));
+    }
+
+    let region = region::ActiveModel {
+        region_name: Set(request.region_name),
+        ..Default::default()
+    };
+
+    let region = region
+        .insert(db)
+        .await
+        .map_err(|e| anyhow!("Insert region failed: {:?}", e))?;
+
+    Ok(region.region_id)
 }

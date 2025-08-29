@@ -4,7 +4,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "product_categories")]
+#[sea_orm(table_name = "product_category")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub product_id: i64,
@@ -21,11 +21,11 @@ pub enum Relation {
     )]
     Product,
     #[sea_orm(
-        belongs_to = "super::product_category::Entity",
+        belongs_to = "super::category::Entity",
         from = "Column::CategoryId",
-        to = "super::product_category::Column::CategoryId"
+        to = "super::category::Column::CategoryId"
     )]
-    ProductCategory,
+    Category,
 }
 
 impl Related<super::product::Entity> for Entity {
@@ -34,9 +34,9 @@ impl Related<super::product::Entity> for Entity {
     }
 }
 
-impl Related<super::product_category::Entity> for Entity {
+impl Related<super::category::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ProductCategory.def()
+        Relation::Category.def()
     }
 }
 

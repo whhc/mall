@@ -1,3 +1,4 @@
+pub mod category;
 pub mod product;
 pub mod product_category;
 pub mod product_region;

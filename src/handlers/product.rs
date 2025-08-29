@@ -64,7 +64,7 @@ pub async fn create_product(
             .into_response();
     }
 
-    match product_service::create_product(&state.db, request, user).await {
+    match product_service::create_product(&state.db, request).await {
         Ok(product_id) => (
             StatusCode::CREATED,
             Json(ApiResponse::success_with_message(

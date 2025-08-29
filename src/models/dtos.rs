@@ -1,13 +1,14 @@
+use entity::product::ProductStatus;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 // use entity::product::ProductStatus; // 将在迁移后启用
 
-// 临时定义，将在迁移后替换为 entity::product::ProductStatus
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ProductStatus {
-    Active,
-    Inactive,
-}
+// // 临时定义，将迁移后替换为 entity::product::ProductStatus
+// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// pub enum ProductStatus {
+//     Active,
+//     Inactive,
+// }
 
 /// 用户注册请求DTO
 #[derive(Debug, Deserialize)]
@@ -74,7 +75,7 @@ pub struct CreateProductRequest {
 pub struct UpdateProductRequest {
     pub product_name: Option<String>,
     pub product_description: Option<String>,
-    pub product_price: Option<f64>,
+    pub product_price: Option<Decimal>,
     pub product_stock: Option<i32>,
     pub status: Option<ProductStatus>,
     pub product_image: Option<String>,

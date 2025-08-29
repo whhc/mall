@@ -114,7 +114,7 @@ where
 
         let user = User::find()
             .filter(
-                entity::user::Column::Id.eq(decoded.claims.sub.parse::<u64>().map_err(|_| {
+                entity::user::Column::Id.eq(decoded.claims.sub.parse::<i32>().map_err(|_| {
                     (
                         StatusCode::UNAUTHORIZED,
                         "Invalid user ID in token".to_string(),

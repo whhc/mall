@@ -1,18 +1,29 @@
-
 # TODO
 
-## User API
+## User
 
 - [ ] Refresh Token
 - [ ] Change password
 
-## Products
+## Cart
 
 - [ ] Database Design
 - [ ] API Design
+- [ ] API development
+
+## Order
+
+- [ ] Database Design
+- [ ] API Design
+- [ ] API development
+
 
 ## Others
 
-- [ ] Orders
-- [ ] Carts
+- [ ] Payment
+- [ ] Redis
+- [ ] Swagger
+- [ ] Logger
+- [ ] Cache
+- [ ] Test
 - [ ] ...

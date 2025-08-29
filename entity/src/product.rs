@@ -37,9 +37,9 @@ pub enum Relation {
     ProductRegions,
 }
 
-impl Related<super::product_category::Entity> for Entity {
+impl Related<super::category::Entity> for Entity {
     fn to() -> RelationDef {
-        super::product_category::Relation::ProductCategory.def()
+        super::product_category::Relation::Category.def()
     }
 
     fn via() -> Option<RelationDef> {
